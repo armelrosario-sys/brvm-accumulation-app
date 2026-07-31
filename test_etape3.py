@@ -30,7 +30,7 @@ if historique.empty:
 
 # --- Calcul des indicateurs ---
 scores = calculer_scores_marche(historique)
-liquidite = calculer_liquidite(historique)
+liquidite = calculer_liquidite(historique, df_jour=df_jour)
 pics = calculer_pic_volume(historique)
 
 mapping_noms = construire_mapping_noms(df_jour)

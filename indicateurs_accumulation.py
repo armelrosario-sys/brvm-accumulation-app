@@ -94,15 +94,19 @@ def calculer_scores_marche(df_historique, poids=None):
                 "Score_AD", "Score_OBV", "Score_CMF", "Score_VWAP", "Score_Composite"]
     return df[colonnes].sort_values("Score_Composite", ascending=False).reset_index(drop=True)
 
+def calculer_liquidite(df_historique, df_jour=None, fenetre=20):
+    """
+    df_jour (optionnel) : DataFrame du scraping du jour (collecte_brvm.py),
+    utilise pour recuperer le volume du VENDREDI en cours si le fichier
+    d'historique externe n'a pas encore ete mis a jour apres cloture.
+    """
+    volumes_jour = {}
+    if df_jour is not None and "Volume" in df_jour.columns:
+        volumes_jour = dict(zip(df_jour["Symbole"], df_jour["Volume"]))
 
-def calculer_liquidite(df_historique, fenetre=20):
-    """
-    Calcule, par valeur :
-    - Volume_Moyen_20j et son tier (Faible/Moyenne/Elevee)
-    - Variation_Hebdo_Volume : variation Lundi -> Vendredi de la semaine en cours
-      (uniquement calculee si aujourd'hui est un vendredi de bourse ; sinon None)
-    - Variation_Vol_Moyen_20j : evolution du volume moyen 20j actuel vs le 20j precedent
-    """
+    aujourdhui_reel = pd.Timestamp.now().normalize()
+    est_vendredi_aujourdhui = aujourdhui_reel.weekday() == 4
+
     resultats = []
     for symbole, groupe in df_historique.groupby("Symbole"):
         groupe = groupe.sort_values("Date").reset_index(drop=True)
@@ -119,19 +123,18 @@ def calculer_liquidite(df_historique, fenetre=20):
         else:
             variation_vol_moyen = None
 
-        derniere_date = groupe["Date"].iloc[-1]
         variation_hebdo = None
-        if derniere_date.weekday() == 4:  # vendredi
-            annee, semaine, _ = derniere_date.isocalendar()
+        if est_vendredi_aujourdhui:
+            annee, semaine, _ = aujourdhui_reel.isocalendar()
             semaine_courante = groupe[
                 (groupe["Date"].dt.isocalendar().year == annee)
                 & (groupe["Date"].dt.isocalendar().week == semaine)
             ]
             lundi = semaine_courante[semaine_courante["Date"].dt.weekday == 0]
-            vendredi = semaine_courante[semaine_courante["Date"].dt.weekday == 4]
-            if not lundi.empty and not vendredi.empty:
+            vol_vendredi = volumes_jour.get(symbole)
+
+            if not lundi.empty and vol_vendredi is not None:
                 vol_lundi = lundi["Volume"].iloc[0]
-                vol_vendredi = vendredi["Volume"].iloc[0]
                 if vol_lundi > 0:
                     variation_hebdo = (vol_vendredi - vol_lundi) / vol_lundi * 100
 
