@@ -161,35 +161,35 @@ def charger_dividendes(liste_tickers, mapping_noms=None):
             if ticker in emetteur or emetteur in ticker:
                 d = pd.to_datetime(date_brute, format="%d/%m/%Y")
                 if d < aujourdhui:
-                    date_affichee = f"{date_brute} (deja paye)"
+                    date_affichee = f"Paye le {date_brute}"
                     statut = "Verse"
                 else:
-                    date_affichee = f"{date_brute} (a venir)"
+                    date_affichee = f"Prevu le {date_brute}"
                     statut = "Confirme (a venir)"
                 break
 
         # Priorite 2 : Sika "a venir" (detachement)
         if date_affichee is None and ticker in sika_a_venir:
-            date_brute, statut_brut = sika_a_venir[ticker]
+            date_brute, _ = sika_a_venir[ticker]
             if date_brute == "Non fixee":
-                date_affichee = "Date non fixee (a venir)"
+                date_affichee = "Prevu (date non fixee)"
                 statut = "Previsionnel"
             else:
                 d = pd.to_datetime(date_brute, format="%d/%m/%Y")
                 if d < aujourdhui:
-                    date_affichee = f"{date_brute} (detachement deja passe)"
+                    date_affichee = f"Detache le {date_brute}"
                     statut = "Verse"
                 else:
-                    date_affichee = f"{date_brute} (detachement a venir)"
+                    date_affichee = f"Detachement prevu le {date_brute}"
                     statut = "Confirme (a venir)"
 
-        # Priorite 3 : historique Sika (verse, date exacte inconnue -- donc necessairement deja paye)
+        # Priorite 3 : historique Sika (verse, date exacte inconnue)
         if date_affichee is None and ticker in sika_historique:
-            date_affichee = "Deja paye en 2026 (date exacte non disponible)"
+            date_affichee = "Paye en 2026 (date exacte inconnue)"
             statut = "Verse"
 
         if date_affichee is None:
-            date_affichee = "-"
+            date_affichee = "Non identifie"
             statut = f"Non identifie (exercice {EXERCICE_CIBLE} non trouve)"
 
         lignes.append({"Symbole": ticker, "Date_Paiement_Dividende": date_affichee, "Statut_Dividende": statut})
