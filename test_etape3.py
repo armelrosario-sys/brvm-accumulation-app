@@ -3,8 +3,13 @@ import pandas as pd
 import plotly.express as px
 from collecte_brvm import obtenir_cours_brvm
 from historique_brvm import charger_historique_marche
-from indicateurs_accumulation import calculer_scores_marche, calculer_liquidite, calculer_pic_volume
-from dividendes_brvm import construire_mapping_noms, charger_dividendes, completer_avec_non_identifie
+from indicateurs_accumulation import (
+    calculer_scores_marche,
+    calculer_liquidite,
+    calculer_pic_volume,
+    calculer_variation_cours,
+)
+from dividendes_brvm import charger_dividendes, completer_avec_non_identifie
 
 st.set_page_config(page_title="Screener BRVM - Accumulation", layout="wide")
 st.title("Etape 3 - Tableau de bord des accumulations BRVM")
@@ -29,20 +34,16 @@ if historique.empty:
     st.stop()
 
 # --- Calcul des indicateurs ---
-from indicateurs_accumulation import calculer_variation_cours
-
 scores = calculer_scores_marche(historique)
 liquidite = calculer_liquidite(historique, df_jour=df_jour)
 pics = calculer_pic_volume(historique)
 variation_cours = calculer_variation_cours(historique)
-
-mapping_noms = construire_mapping_noms(df_jour)
-dividendes = charger_dividendes(tuple(tickers), mapping_noms)
+dividendes = charger_dividendes(tuple(tickers))
 
 tableau = scores.merge(liquidite, on="Symbole", how="left")
 tableau = tableau.merge(pics, on="Symbole", how="left")
-tableau = completer_avec_non_identifie(tableau, dividendes)
 tableau = tableau.merge(variation_cours, on="Symbole", how="left")
+tableau = completer_avec_non_identifie(tableau, dividendes)
 
 
 # --- Regle de synthese (transparente) : Lecture rapide + Verdict ---
@@ -52,6 +53,7 @@ def generer_lecture_verdict(ligne):
     varhebdo = ligne["Variation_Hebdo_Volume"]
     liquidite_val = ligne["Liquidite"]
     statut_div = ligne["Statut_Dividende"]
+    var_cours = ligne["Variation_Cours_20j"]
 
     alerte_dividende = "confirme" in statut_div.lower() or "previsionnel" in statut_div.lower()
 
@@ -60,7 +62,7 @@ def generer_lecture_verdict(ligne):
         tendance_fond = "hausse" if var20 > 0 else ("baisse" if var20 < 0 else "stable")
 
     pic_isole = pd.notna(varhebdo) and varhebdo > 100 and tendance_fond == "baisse"
-    var_cours = ligne["Variation_Cours_20j"]
+
     signal_encore_invisible = (
         pd.notna(var_cours) and pd.notna(var20)
         and var20 > 30 and abs(var_cours) < 3
@@ -125,9 +127,8 @@ scores_choisis = st.multiselect(
     default=[],
 )
 
-# --- Ordre des colonnes demande ---
+# --- Ordre des colonnes ---
 colonnes_base = [
-    colonnes_base = [
     "Symbole", "Dernier_Cours", "Lecture_Rapide", "Verdict", "Liquidite",
     "Variation_Hebdo_Volume", "Volume_Moyen_20j", "Variation_Vol_Moyen_20j",
     "Variation_Cours_20j",
@@ -171,7 +172,6 @@ style = style.map(couleur_tendance, subset=["Variation_Vol_Moyen_20j", "Variatio
 style = style.map(couleur_verdict, subset=["Verdict"])
 
 format_colonnes = {
-    format_colonnes = {
     "Dernier_Cours": "{:.0f}",
     "Volume_Moyen_20j": "{:.0f}",
     "Variation_Vol_Moyen_20j": "{:.1f}%",
@@ -186,14 +186,33 @@ for col in colonnes_scores:
 
 style = style.format(format_colonnes, na_rep="-")
 
-st.dataframe(style, use_container_width=True, height=550)
+st.dataframe(
+    style,
+    use_container_width=True,
+    height=550,
+    column_config={
+        "Variation_Hebdo_Volume": st.column_config.NumberColumn(
+            "Var. Volume Lun-Ven (%)", format="%.1f%%"
+        ),
+        "Variation_Vol_Moyen_20j": st.column_config.NumberColumn(
+            "Var. Volume Moyen 20j (%)", format="%.1f%%"
+        ),
+        "Variation_Cours_20j": st.column_config.NumberColumn(
+            "Var. Cours 20j (%)", format="%.1f%%"
+        ),
+        "Date_Paiement_Dividende": st.column_config.TextColumn(
+            "Date Paiement Dividende", width="large"
+        ),
+    },
+)
 
 if pd.Timestamp.now().weekday() != 4:
     st.caption("La colonne Variation Lun-Ven n'est renseignee que le vendredi.")
 
-st.caption("Dividende : correspondance automatique par sigle/nom, calendrier officiel BRVM, exercice N-1. "
-           "Statuts : Verse (paiement passe) / Confirme (date future fixee) / Previsionnel (date pas encore fixee) / "
-           "Non identifie (aucune correspondance trouvee -- ne signifie pas absence de dividende). "
+st.caption("Dividende : source BRVM officielle + Sika Finance. "
+           "Statuts : Verse (paiement/detachement passe) / Confirme (a venir, date connue) / "
+           "Previsionnel (a venir, date non fixee) / Non identifie (aucune correspondance trouvee). "
+           "Variation Cours 20j : sur la meme fenetre que Variation Volume Moyen 20j, pour lecture croisee. "
            "Lecture rapide / Verdict : synthese automatique, pas un conseil financier.")
 
 # --- Graphique ---
