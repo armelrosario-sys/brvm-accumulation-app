@@ -191,6 +191,9 @@ st.dataframe(
     use_container_width=True,
     height=550,
     column_config={
+        "Symbole": st.column_config.Column(
+            "Symbole", pinned=True
+        ),
         "Variation_Hebdo_Volume": st.column_config.NumberColumn(
             "Var. Volume Lun-Ven (%)", format="%.1f%%"
         ),
