@@ -29,9 +29,12 @@ if historique.empty:
     st.stop()
 
 # --- Calcul des indicateurs ---
+from indicateurs_accumulation import calculer_variation_cours
+
 scores = calculer_scores_marche(historique)
 liquidite = calculer_liquidite(historique, df_jour=df_jour)
 pics = calculer_pic_volume(historique)
+variation_cours = calculer_variation_cours(historique)
 
 mapping_noms = construire_mapping_noms(df_jour)
 dividendes = charger_dividendes(tuple(tickers), mapping_noms)
@@ -39,6 +42,7 @@ dividendes = charger_dividendes(tuple(tickers), mapping_noms)
 tableau = scores.merge(liquidite, on="Symbole", how="left")
 tableau = tableau.merge(pics, on="Symbole", how="left")
 tableau = completer_avec_non_identifie(tableau, dividendes)
+tableau = tableau.merge(variation_cours, on="Symbole", how="left")
 
 
 # --- Regle de synthese (transparente) : Lecture rapide + Verdict ---
@@ -56,6 +60,11 @@ def generer_lecture_verdict(ligne):
         tendance_fond = "hausse" if var20 > 0 else ("baisse" if var20 < 0 else "stable")
 
     pic_isole = pd.notna(varhebdo) and varhebdo > 100 and tendance_fond == "baisse"
+    var_cours = ligne["Variation_Cours_20j"]
+    signal_encore_invisible = (
+        pd.notna(var_cours) and pd.notna(var20)
+        and var20 > 30 and abs(var_cours) < 3
+    )
 
     if alerte_dividende:
         base = "Dividende proche/recent detecte (" + statut_div + ") : le volume/prix peut refleter ce dividende, pas une accumulation. "
@@ -68,7 +77,10 @@ def generer_lecture_verdict(ligne):
 
     if score >= 70:
         if liquidite_val in ("Faible", "Moyenne") and tendance_fond == "hausse":
-            return ("Bon score, liquidite " + liquidite_val.lower() + ", volume en hausse de fond confirmee.", "Le plus proche de l'objectif")
+            base = "Bon score, liquidite " + liquidite_val.lower() + ", volume en hausse de fond confirmee."
+            if signal_encore_invisible:
+                base += " Signal encore invisible dans le prix (cours quasi stable malgre le volume)."
+            return (base, "Le plus proche de l'objectif")
         elif liquidite_val == "Elevee":
             return ("Bon score, mais valeur deja tres suivie sur le marche.", "Interessant, mais pas discret")
         else:
@@ -115,8 +127,10 @@ scores_choisis = st.multiselect(
 
 # --- Ordre des colonnes demande ---
 colonnes_base = [
+    colonnes_base = [
     "Symbole", "Dernier_Cours", "Lecture_Rapide", "Verdict", "Liquidite",
     "Variation_Hebdo_Volume", "Volume_Moyen_20j", "Variation_Vol_Moyen_20j",
+    "Variation_Cours_20j",
 ]
 colonnes_affichees = colonnes_base + scores_choisis + ["Date_Paiement_Dividende"]
 tableau_affiche = tableau_affiche.sort_values("Score_Composite", ascending=False)[colonnes_affichees].reset_index(drop=True)
@@ -153,14 +167,16 @@ def couleur_verdict(val):
 style = tableau_affiche.style
 if "Liquidite" in tableau_affiche.columns:
     style = style.map(couleur_liquidite, subset=["Liquidite"])
-style = style.map(couleur_tendance, subset=["Variation_Vol_Moyen_20j", "Variation_Hebdo_Volume"])
+style = style.map(couleur_tendance, subset=["Variation_Vol_Moyen_20j", "Variation_Hebdo_Volume", "Variation_Cours_20j"])
 style = style.map(couleur_verdict, subset=["Verdict"])
 
 format_colonnes = {
+    format_colonnes = {
     "Dernier_Cours": "{:.0f}",
     "Volume_Moyen_20j": "{:.0f}",
     "Variation_Vol_Moyen_20j": "{:.1f}%",
     "Variation_Hebdo_Volume": "{:.1f}%",
+    "Variation_Cours_20j": "{:.1f}%",
 }
 if "Volume_Pic" in tableau_affiche.columns:
     format_colonnes["Volume_Pic"] = "{:.0f}"

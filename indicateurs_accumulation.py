@@ -178,3 +178,30 @@ def calculer_pic_volume(df_historique, fenetre=20):
             "Volume_Pic": int(ligne_pic["Volume"]),
         })
     return pd.DataFrame(resultats)
+
+def calculer_variation_cours(df_historique, fenetre=20):
+    """
+    Variation du cours de cloture sur 'fenetre' jours de bourse (meme fenetre
+    que Variation_Vol_Moyen_20j, pour permettre une lecture croisee directe) :
+    cours actuel vs cours d'il y a 'fenetre' jours de bourse.
+    """
+    resultats = []
+    for symbole, groupe in df_historique.groupby("Symbole"):
+        groupe = groupe.sort_values("Date").reset_index(drop=True)
+        if len(groupe) < fenetre + 1:
+            resultats.append({"Symbole": symbole, "Variation_Cours_20j": None})
+            continue
+
+        cours_actuel = groupe["Cours_Cloture"].iloc[-1]
+        cours_ancien = groupe["Cours_Cloture"].iloc[-(fenetre + 1)]
+
+        variation = (
+            (cours_actuel - cours_ancien) / cours_ancien * 100
+            if cours_ancien > 0 else None
+        )
+        resultats.append({
+            "Symbole": symbole,
+            "Variation_Cours_20j": round(variation, 1) if variation is not None else None,
+        })
+
+    return pd.DataFrame(resultats)
