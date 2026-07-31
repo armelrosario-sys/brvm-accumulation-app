@@ -4,3 +4,4 @@ requests
 lxml
 plotly
 numpy
+beautifulsoup4
