@@ -96,8 +96,12 @@ def _extraire_ticker(lien_href):
     return match.group(1) if match else None
 
 
+def _a_une_valeur(texte):
+    """Verifie si une cellule contient un vrai chiffre, peu importe le caractere de tiret utilise."""
+    return bool(re.search(r"\d", texte or ""))
+
+
 def _charger_sika():
-    """Table 'a venir' + table historique 3 ans (Div. 2025) de Sika Finance."""
     a_venir = {}
     historique_2025 = set()
     try:
@@ -135,7 +139,7 @@ def _charger_sika():
                     cellules = ligne.find_all("td")
                     if ticker and len(cellules) >= 2:
                         valeur_2025 = cellules[-2].get_text(strip=True)
-                        if valeur_2025 not in ("-", "", None):
+                        if _a_une_valeur(valeur_2025):
                             historique_2025.add(ticker)
     except Exception:
         pass
@@ -144,38 +148,53 @@ def _charger_sika():
 
 @st.cache_data(ttl=3600, show_spinner="Chargement du calendrier des dividendes...")
 def charger_dividendes(liste_tickers, mapping_noms=None):
-    """
-    Combine BRVM officiel (dates precises) + Sika (dates a venir/previsionnel
-    + confirmation historique 2025). mapping_noms est conserve pour compat.
-    """
     brvm = _charger_brvm_officiel()
     sika_a_venir, sika_historique = _charger_sika()
+    aujourdhui = pd.Timestamp.now().normalize()
 
     lignes = []
     for ticker in liste_tickers:
-        date_aff, statut = None, None
+        date_affichee, statut = None, None
 
-        # Priorite 1 : BRVM officiel (nom exact ou approche)
-        for emetteur, (d, s) in brvm.items():
+        # Priorite 1 : BRVM officiel (date exacte de paiement)
+        for emetteur, (date_brute, _) in brvm.items():
             if ticker in emetteur or emetteur in ticker:
-                date_aff, statut = d, s
+                d = pd.to_datetime(date_brute, format="%d/%m/%Y")
+                if d < aujourdhui:
+                    date_affichee = f"{date_brute} (deja paye)"
+                    statut = "Verse"
+                else:
+                    date_affichee = f"{date_brute} (a venir)"
+                    statut = "Confirme (a venir)"
                 break
 
-        # Priorite 2 : Sika "a venir" (ticker exact, fiable via URL)
-        if date_aff is None and ticker in sika_a_venir:
-            date_aff, statut = sika_a_venir[ticker]
+        # Priorite 2 : Sika "a venir" (detachement)
+        if date_affichee is None and ticker in sika_a_venir:
+            date_brute, statut_brut = sika_a_venir[ticker]
+            if date_brute == "Non fixee":
+                date_affichee = "Date non fixee (a venir)"
+                statut = "Previsionnel"
+            else:
+                d = pd.to_datetime(date_brute, format="%d/%m/%Y")
+                if d < aujourdhui:
+                    date_affichee = f"{date_brute} (detachement deja passe)"
+                    statut = "Verse"
+                else:
+                    date_affichee = f"{date_brute} (detachement a venir)"
+                    statut = "Confirme (a venir)"
 
-        # Priorite 3 : historique Sika (confirme verse, date exacte inconnue)
-        if date_aff is None and ticker in sika_historique:
-            date_aff, statut = "Date exacte non disponible", "Verse (montant confirme)"
+        # Priorite 3 : historique Sika (verse, date exacte inconnue -- donc necessairement deja paye)
+        if date_affichee is None and ticker in sika_historique:
+            date_affichee = "Deja paye en 2026 (date exacte non disponible)"
+            statut = "Verse"
 
-        if date_aff is None:
-            date_aff, statut = "-", f"Non identifie (exercice {EXERCICE_CIBLE} non trouve)"
+        if date_affichee is None:
+            date_affichee = "-"
+            statut = f"Non identifie (exercice {EXERCICE_CIBLE} non trouve)"
 
-        lignes.append({"Symbole": ticker, "Date_Paiement_Dividende": date_aff, "Statut_Dividende": statut})
+        lignes.append({"Symbole": ticker, "Date_Paiement_Dividende": date_affichee, "Statut_Dividende": statut})
 
     return pd.DataFrame(lignes)
-
 
 def construire_mapping_noms(df_jour):
     """Conserve pour compatibilite avec test_etape3.py (plus utilise activement)."""
