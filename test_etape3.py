@@ -209,8 +209,14 @@ st.dataframe(
     },
 )
 
-if pd.Timestamp.now().weekday() != 4:
-    st.caption("La colonne Variation Lun-Ven n'est renseignee que le vendredi.")
+_jours_fr = {0: "Lundi", 1: "Mardi", 2: "Mercredi", 3: "Jeudi", 4: "Vendredi", 5: "Samedi", 6: "Dimanche"}
+_jour_actuel = pd.Timestamp.now().weekday()
+if _jour_actuel == 0:
+    st.caption("Var. Volume Lun-Ven : pas encore de comparaison disponible (lundi = jour de reference de la semaine).")
+elif _jour_actuel in (5, 6):
+    st.caption("Var. Volume Lun-Ven : derniere valeur calculee vendredi dernier (persistee, marche ferme le week-end).")
+else:
+    st.caption(f"Var. Volume Lun-Ven : compare aujourd'hui ({_jours_fr[_jour_actuel]}) au lundi de cette semaine.")
 
 st.caption("Dividende : source BRVM officielle + Sika Finance. "
            "Statuts : Verse (paiement/detachement passe) / Confirme (a venir, date connue) / "
