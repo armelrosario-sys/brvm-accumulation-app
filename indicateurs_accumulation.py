@@ -146,11 +146,19 @@ def calculer_liquidite(df_historique, df_jour=None, fenetre=20):
                 vol_reference = volumes_jour.get(symbole)
                 if vol_reference is not None:
                     variation_hebdo = (vol_reference - vol_lundi) / vol_lundi * 100
-            else:  # samedi/dimanche : persiste la valeur de vendredi
+           else:  # samedi/dimanche : persiste la valeur de vendredi
                 vendredi = semaine_courante[semaine_courante["Date"].dt.weekday == 4]
                 if not vendredi.empty:
                     vol_vendredi = vendredi["Volume"].iloc[0]
                     variation_hebdo = (vol_vendredi - vol_lundi) / vol_lundi * 100
+                else:
+                    # Filet de secours : l'historique externe n'a pas encore
+                    # la ligne de vendredi (delai habituel de mise a jour).
+                    # On utilise le volume scrape en direct vendredi/week-end,
+                    # qui reste fige sur la derniere cloture connue (vendredi).
+                    vol_vendredi = volumes_jour.get(symbole)
+                    if vol_vendredi is not None:
+                        variation_hebdo = (vol_vendredi - vol_lundi) / vol_lundi * 100
 
         resultats.append({
             "Symbole": symbole,
