@@ -2,7 +2,7 @@
 """
 Calcul des indicateurs d'accumulation : A/D Line, OBV, CMF, VWAP.
 Scores individuels normalises (percentile 0-100) + composite pondere.
-Liquidite (volume moyen 20j + variations) + date du pic de volume.
+Liquidite (volume moyen 20j + variations) + date du pic de volume + variation du cours 20j.
 """
 import pandas as pd
 import numpy as np
@@ -94,6 +94,7 @@ def calculer_scores_marche(df_historique, poids=None):
                 "Score_AD", "Score_OBV", "Score_CMF", "Score_VWAP", "Score_Composite"]
     return df[colonnes].sort_values("Score_Composite", ascending=False).reset_index(drop=True)
 
+
 def calculer_liquidite(df_historique, df_jour=None, fenetre=20):
     """
     df_jour (optionnel) : DataFrame du scraping du jour (collecte_brvm.py).
@@ -103,8 +104,9 @@ def calculer_liquidite(df_historique, df_jour=None, fenetre=20):
     reference progresse au fil de la semaine :
     - Lundi : pas de comparaison (c'est la reference elle-meme)
     - Mardi a Vendredi : volume du jour scrape en direct (df_jour)
-    - Samedi/Dimanche : dernier volume de vendredi disponible dans l'historique
-      (persistance, pas de recalcul le week-end)
+    - Samedi/Dimanche : dernier volume de vendredi disponible dans l'historique,
+      ou a defaut (si l'historique externe n'est pas encore a jour) le volume
+      scrape en direct (qui reste fige sur la derniere cloture connue).
     """
     volumes_jour = {}
     if df_jour is not None and "Volume" in df_jour.columns:
@@ -130,7 +132,6 @@ def calculer_liquidite(df_historique, df_jour=None, fenetre=20):
         else:
             variation_vol_moyen = None
 
-        # --- Variation hebdomadaire progressive ---
         variation_hebdo = None
         semaine_courante = groupe[
             (groupe["Date"].dt.isocalendar().year == annee)
@@ -141,21 +142,17 @@ def calculer_liquidite(df_historique, df_jour=None, fenetre=20):
 
         if vol_lundi is not None and vol_lundi > 0:
             if jour_semaine == 0:
-                variation_hebdo = None  # lundi = reference, rien a comparer encore
-            elif jour_semaine in (1, 2, 3, 4):  # mardi a vendredi
+                variation_hebdo = None
+            elif jour_semaine in (1, 2, 3, 4):
                 vol_reference = volumes_jour.get(symbole)
                 if vol_reference is not None:
                     variation_hebdo = (vol_reference - vol_lundi) / vol_lundi * 100
-           else:  # samedi/dimanche : persiste la valeur de vendredi
+            else:
                 vendredi = semaine_courante[semaine_courante["Date"].dt.weekday == 4]
                 if not vendredi.empty:
                     vol_vendredi = vendredi["Volume"].iloc[0]
                     variation_hebdo = (vol_vendredi - vol_lundi) / vol_lundi * 100
                 else:
-                    # Filet de secours : l'historique externe n'a pas encore
-                    # la ligne de vendredi (delai habituel de mise a jour).
-                    # On utilise le volume scrape en direct vendredi/week-end,
-                    # qui reste fige sur la derniere cloture connue (vendredi).
                     vol_vendredi = volumes_jour.get(symbole)
                     if vol_vendredi is not None:
                         variation_hebdo = (vol_vendredi - vol_lundi) / vol_lundi * 100
@@ -181,6 +178,7 @@ def calculer_liquidite(df_historique, df_jour=None, fenetre=20):
     df["Liquidite"] = df["Rang_Liquidite"].apply(classer)
     return df[["Symbole", "Volume_Moyen_20j", "Liquidite", "Variation_Vol_Moyen_20j", "Variation_Hebdo_Volume"]]
 
+
 def calculer_pic_volume(df_historique, fenetre=20):
     """
     Pour chaque valeur, identifie la date et le volume du jour le plus
@@ -199,6 +197,7 @@ def calculer_pic_volume(df_historique, fenetre=20):
             "Volume_Pic": int(ligne_pic["Volume"]),
         })
     return pd.DataFrame(resultats)
+
 
 def calculer_variation_cours(df_historique, fenetre=20):
     """
